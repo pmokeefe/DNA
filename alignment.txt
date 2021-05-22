@@ -1,0 +1,262 @@
+alignment.txt
+
+reference genome fasta
+reads in fastq format
+paired reads
+
+at each position in the reference there is a minimal unique subsequence (mus) beginning at that read (normally)
+only attribute is the length
+if we are dealing with small reads, only need one byte for length.  
+
+occurences of the reference mus in reads
+	check r.c of each read as well 
+	consistency of all the mus in each read/mate pair
+		must completely cover both mate pairs contiguously
+			minimum  overlap length of reads, so we can trim ends for errors  
+		gaps in coverage
+			indicates an error in the read or a variant 
+		lack of contiguity 
+		distance between mate pairs is not the reference
+	there is no mus  
+
+reference minimal k repeat subseseques  mrs_k  mus = mrs_1
+if the alignment of a read is unsatisfactory at k, try k+1
+can we use k to find k+1?
+the immediate subsequences of a murs_k will have k'>k repeats 
+might want to check the neighbors since the immediate subsequence will be shared.  
+The neighbor might have one that is guaranteed to have fewer repeats.  
+
+
+multiple mus in a read.
+	are they in the same order in the read and the reference?
+	if so, just match the gaps.  
+	if they are out of order, just give up!  
+
+suppose k>1 but only one 
+	match the prefixs and suffixs, take the repeat with the lowest score
+
+suppose k=2 and there are two such subsequences
+	there are four subsequences in the reference
+	how are they ordered?
+		one of the four pairing might be eliminated due to order.  
+	each has a seperate distance in the reference. 
+	difference between the reference distance for that pair and the read distance.
+		there's a minimum score (assume the maximum match, the rest is an indel)
+		there's a maximum score: a complete indel
+		may be possible to prune some possibilities that way.  
+	match a pair with a minimal possible score.
+		if it's a good result, that might prune the possibilities further
+
+what if there's an mus for only one of a mate pair?
+
+Consistently prefering repeat count to value matches.
+if there are two possibilities with equal repeat counts, but just one contiguous mrs  prefer the longer?
+If there are two possibilites but one or more of them have discontguous minimal mrs?
+	prefer the ones with the longest, ignore the shorter ones?  That's very local and easy to understand
+	if we juggle discontguous matches, we have to put a value on the gap.
+	It's easy to understand.
+	So if one alternative had a mrs with length 7 and a different one had two mrs of 6, we prefer the 7?
+		of course the value of the two sixes would depend on the gap between. And it's work to figure that out.
+		might not prefer two fours with a big gap vs a single 7.  It depends. 
+the case of mrs>1 and more than one have the same contig length.
+we could keep growing those contigs.  Whats the next k at which one the contigs increases in size? 
+	find the length of each contig at that k, eliminate any with a suboptimal length.  
+
+Note that the read may be matching two more reference regions which are identical.  
+	In which case, combine the equivalent ones and save some work.  
+	Should cardinality of the equivalence class effect the matching?
+	Maybe not.  
+
+Scenario
+	two possible matches
+		in one there's an snp in the middle of the read
+		in the other there's a bad mismatch off center.
+		The 2nd one will have a higher score in this scheme, probably not what you want.  
+
+Actually we should never go to a higher repeat count, the number of alternatives will grow by definition!
+Actually contig length is moot too, it will be the same for all alternatives.    The repeat count tells us everything.
+
+Growing the size of a region can only make the repeat count go down.  We already found the lowest repeat counts for the read.  
+
+for each alternative
+	match up all the mrs contigs in order .
+	compute string matching scores for the residuals:  gaps, prefix, suffix.  
+	some of the alternatives may be identical for some of the residual contigs, check that and save some work.  
+
+I continue to ignore a basic fact haha.  any supersequence of a contig cannot not have higher repeats
+There will only be one mrs in a read!
+This applies to the mate pair as well, BTW.  
+	Not quite as obvious how to use that for the mate pair however.  
+
+Now just string match the prefix and suffix with each alternative.
+	do something reasonable based on the scores.  Minimal total score, for example.  
+	we already have a suffix array, so presumbaly there are better methods for getting the score.
+	We would need a "prefix array" to get the same same for the prefixes.  
+	Might not be possible to store both in DRAM at once, could do it in seperate passes, I suppose. 
+
+When we have a mus, it's much simpler. 
+So when we are doing k repeats we have to be able to find all the prefixes and suffixs of the k contigs.  
+	Only working with one k at a time, mercifully.  
+	Maybe we can filter the full prefix/suffix arrays since we are only interested in ambiguous 
+
+	We are dealing with mate pairs, if both mates happened to have the same k,  it might help.  
+	At least we know the direction.  
+
+	There may also be ambiguity about the r.c.  If both had the same k.  
+
+Not sure how the repeat count helps
+	imagine that there are variant(s) in the read.
+	might have short matches with high repeat counts to the variant, that's it.  
+	what about the case where the closest match has a high repeat count in the reference
+	but the sample has its own private variant for some of those?
+
+	Imagine doing a min edit distance match on each read.  That's O(m*n)
+	Seeds.  Longest Common Subsequence (vs substring)
+
+
+		
+ Minimum Unique Substrings and Maximum Repeats
+ https://arxiv.org/pdf/1905.12854.pdf
+ An interesting case are complex low complexity repeats
+ some mus may contain one of those.  
+ But they are quite variable  so we won't necessarily expect to always see that exact mess
+ The left and right maximal proper susequences are always repeats.
+ What if they are equal to each other?  
+ Actually what's most interesting are subsequences of S which occur only in S.  In fact, the minimal such are likely to be the most robust.  
+ one important and easily checked property is that the only unique substring with S is S itself.  
+ That may be too stringent. 
+ There could be unique substrings of S, but that occur other places as well.  In fact they must!  
+ It's quite possible that the center subsequence only appears once in S.  But it would then also have to appear somewhere else!  Weird.  
+
+unique subsequences
+	start with a size that will fit into memory and work downward
+	if we choose 32 bit subsequences there's also room for 32 bit positions
+	work one chromosome at a time.
+	To make life nice and convenient compress the good bases
+	will need an index for the contigs   
+	3GB per genome, 2 genomes, but 4 bases per byte so 1.5GB for the compressed data, not too bad
+	Do we have enought room to sort?  Much better locality.  
+	need to store the value 32 bits 4 bytes and the position also 32 bits 4 bytes 
+	8 bytes X 3GB it will fit easily.  
+	Radix sort I already have.  
+
+
+	for the longest length
+	sort the sequence position pairs
+	replace the bases with the duplicate count, we have 32 bits!
+	after the sort is finished seperate the unique from the duplicates.
+	sort them seperately.  
+	For the unique, see if they 
+
+phase 1 seed and extend
+	sample 
+	reference
+
+	we're going to align the reference to the sample, instead of the other way around
+	only deal with the principal reference contig for each chromosome 
+		there are N's and low complexity regions in the reference
+		start with the longest good contig in the reference
+		divide and conquer  
+		unique kmers from the entire chromsome from both reference and sample
+		first match from both ends 
+		this is what geneticists apparently do.  they use primers to bound a region.  
+		can we then do this recursively to fill the gaps?
+		what if we choose wrong?
+		make the sample primary, not the reference.
+		first sample primer from each end that matches a reference primer.
+
+		complex primers with self overlap.  Postpone that endeavour. 
+
+	what's the "right size" to look for unique matches?
+		has to fit in memory
+		as big as possible, but not too big
+		if the region size is n and the chunk size is m
+		there with be (n-m) positions of size m.  So the space is log(n-m)*(n-m)*m.  the log is to represent the position. 
+			Have to round log(n-m), m to a byte boundaries.  
+				d log(n-m)*(n-m)*m /dm = d log(n-m)/dm*(n-m)*m +  log(n-m)*d(n-m)/dm*m  +  log(n-m)*(n-m)*dm /dm
+				-(n-m)*m/(n-m) +  - log(n-m)*m  +  log(n-m)*(n-m)
+				-m - log(n-m)*(n-2m) =0 
+		We need to sort.  
+		cost of sorting is (n-m)log(n-m)*log(n-m)*m  =  m*(n-m)log^2(n-m)
+
+		when the chunk is size m bytes there are 2^8m possible chunks.  when we have a DNA segment of size n, what are the odds of having
+		a singleton of size m?
+		for small n run Smith-Waterman.
+		Might want something different for low complexity regions however.  
+		for large n, we want to find primers at both ends.  So a lot of singletons.  
+		but one is better than nothing.
+		The one might be crap though, leading to very skewed prefix/suffix gaps.  
+		If there are zero might be worth trying a bigger chunk.
+		In that case, could try a bigger chunk if we have memory.  
+		Even in the case of two primers, we could end up with something skewed.
+		Is the best score matching the primers better than the best score losing them.
+			they might partially match.
+		When n is small better just use Smith-Waterman.  
+		What primer size gives us the most primers?
+		Depends on n, and the string complexity.  
+		compressibility.
+		Entropy.
+		kmer spectrum and entropy as a function of n,m region.
+		how much does the factorization of m matter?
+
+		number of singletons, prefix/suffix/enclosure statistics.  
+		Not just the number, but the quality of primers.  
+
+		segment into A/T G/C flip.  
+		there are three types of flips 
+		A/T->A/T
+		A/T->G/C
+		G/C->A/T
+		G/C->A/T
+
+		a palindromic dimer is disfavored
+		are there any other palindromic kmers which are disfavored.  
+		there's within run entropy and between runs
+		really only two symbols  CG and TA
+		within each complimentary pair run there are four 
+		CG*
+		GC*
+		C*
+		G* 
+		CG*->GC*
+		it is necessarily linked by 0 or more G
+		likewise
+		GC*->CG*
+		in each run the only issue is the length
+		nonzero in the case of CG/GC. 
+		So there are 8 integer symbols.  
+
+		C|G->A|T
+		there are limitations on the phase given the enpoints.  
+		only even or odd lengths depending on the endpoints
+		so there's an integer parameter here too, the length.  
+		Then it's just a bit string.  The bit string is only non integer parameter. 
+
+		
+		CG+ -> GC+  is possible
+		CG+ -> CG->  is not  
+
+		CGC is parsed as (CG)C  not C(GC)
+		highest priority are CG TA
+		next are GC AT 
+		everything else is a singleton.  
+
+		another way of saying it is that the transition probability depends on the previous three states
+
+
+first pass
+	kmer spectrum for a fasta file
+	just allocate two big arrays for the kmers with one for the entire genome and another for the current chromosome
+	loop through each chromosome
+		loop through each position
+			increment the kmer count for the chromosome kmer
+			keep track of the leftmost/rightmost primer positions 
+			might want to actually write them all out?  Maybe some limit like 1028?
+			To write out the end, keep a rolling buffer with the last n.  
+			Try to write them all out, but  
+		
+
+
+
+		
+	
